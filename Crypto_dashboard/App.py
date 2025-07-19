@@ -2,102 +2,74 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 
 # ---- CONFIG ----
-st.set_page_config(page_title="Crypto DCA Dashboard", layout="wide")
+st.set_page_config(page_title="Mijn Crypto Dashboard", layout="wide")
 
-# ---- SETTINGS ----
-coins = {
-    'bitcoin': 'BTC',
-    'ethereum': 'ETH',
-    'ripple': 'XRP'
+# ---- JOUW HOLDINGS ----
+portfolio = {
+    'ETH': {
+        'amount': 0.09663165,
+        'cost': 300.00
+    },
+    'BTC': {
+        'amount': 0.00243040,
+        'cost': 249.99
+    },
+    'XRP': {
+        'amount': 82.96991000,
+        'cost': 250.00
+    }
 }
 
-initial_investments = {
-    'BTC': 250,
-    'ETH': 300,
-    'XRP': 250
+# CoinGecko-IDs
+coin_ids = {
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'XRP': 'ripple'
 }
 
-monthly_investment = 100
-allocation = {
-    'BTC': 0.33,
-    'ETH': 0.34,
-    'XRP': 0.33
-}
-
-start_date = datetime(2025, 7, 1)
-
-# ---- FUNCTIONS ----
+# ---- FUNCTIES ----
 @st.cache_data(ttl=3600)
 def get_current_prices():
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
-        'ids': ','.join(coins.keys()),
+        'ids': ','.join(coin_ids.values()),
         'vs_currencies': 'eur'
     }
     response = requests.get(url, params=params)
     return response.json()
 
-def simulate_portfolio(prices):
-    today = datetime.today()
-    months = (today.year - start_date.year) * 12 + today.month - start_date.month + 1
-    dca_history = []
-
-    # Start met initiële holdings
-    total_holdings = {
-        v: initial_investments[v] / prices[k]['eur']
-        for k, v in coins.items()
-    }
-
-    for i in range(months):
-        date = start_date + relativedelta(months=i)
-        for symbol in total_holdings:
-            # Zoek de bijbehorende coin-id in CoinGecko
-            coin_id = [k for k, v in coins.items() if v == symbol][0]
-            price = prices[coin_id]['eur']
-            bought = (monthly_investment * allocation[symbol]) / price
-            total_holdings[symbol] += bought
-
-        value = {
-            symbol: total_holdings[symbol] * prices[[k for k, v in coins.items() if v == symbol][0]]['eur']
-            for symbol in total_holdings
-        }
-
-        dca_history.append({'Date': date, **value})
-
-    return pd.DataFrame(dca_history), total_holdings
-
-# ---- MAIN APP ----
-st.title("📊 Crypto DCA Dashboard")
-st.markdown("Toont realtime waarde, DCA-grafiek en rendement van je cryptoportefeuille.")
-
+# ---- HAAL DATA OP ----
 prices = get_current_prices()
-df, current_holdings = simulate_portfolio(prices)
 
-# ---- LIVE OVERZICHT ----
-st.header("📈 Huidige waarde")
-cols = st.columns(len(current_holdings) + 1)
+# ---- DASHBOARD: LIVE WAARDE EN WINST ----
+st.title("📊 Mijn Crypto Dashboard")
+st.subheader("Live waarde, winst/verlies en koersverwachting")
+
+st.header("📈 Huidige waarde & winst/verlies")
+cols = st.columns(len(portfolio) + 1)
 total_value = 0
+total_cost = 0
 
-for i, symbol in enumerate(current_holdings):
-    coin_id = [k for k, v in coins.items() if v == symbol][0]
-    price = prices[coin_id]['eur']
-    holding_value = current_holdings[symbol] * price
-    total_value += holding_value
-    cols[i].metric(symbol, f"€{holding_value:,.2f}", f"{current_holdings[symbol]:.4f} {symbol}")
+for i, symbol in enumerate(portfolio):
+    amount = portfolio[symbol]['amount']
+    cost = portfolio[symbol]['cost']
+    price = prices[coin_ids[symbol]]['eur']
+    current_value = amount * price
+    pnl_eur = current_value - cost
+    pnl_pct = (pnl_eur / cost) * 100
 
-cols[-1].metric("📦 Totale waarde", f"€{total_value:,.2f}")
+    total_value += current_value
+    total_cost += cost
 
-# ---- GRAFIEK ----
-st.header("📅 Waardeontwikkeling portefeuille")
-df['Total'] = df[[c for c in df.columns if c != 'Date']].sum(axis=1)
-st.line_chart(df.set_index('Date')['Total'])
+    cols[i].metric(
+        label=f"{symbol}",
+        value=f"€{current_value:,.2f}",
+        delta=f"{pnl_eur:+.2f} EUR ({pnl_pct:+.1f}%)"
+    )
 
-# ---- TABEL ----
-st.header("📋 Historisch overzicht")
-st.dataframe(df.round(2), use_container_width=True)
+cols[-1].metric("📦 Totaal", f"€{total_value:,.2f}", f"{(total_value - total_cost):+.2f} EUR")
 
 # ---- KOERSVERWACHTING ----
 st.header("🔮 Verwachting komende week (22–28 juli 2025)")
@@ -122,21 +94,15 @@ news_summary = """
 
 st.markdown(news_summary)
 
-# ---- PUSHNOTIFICATIE (in-app waarschuwing bij grote schommelingen) ----
-st.header("🚨 Waarschuwingen")
+# ---- PUSHNOTIFICATIE SIMULATIE ----
+st.header("🚨 Waarschuwingen (koersschommelingen >10%)")
+for symbol in portfolio:
+    price_now = prices[coin_ids[symbol]]['eur']
+    # Simuleer prijs 24u geleden (stel 11% verschil)
+    simulated_previous = price_now * (1.11 if symbol == 'BTC' else 0.88)
+    delta_pct = ((price_now - simulated_previous) / simulated_previous) * 100
 
-warnings = []
-for coin_id, symbol in coins.items():
-    price_today = prices[coin_id]['eur']
-    # Simulatie: haal vorige prijs op (stel 24u geleden was 95% of 110%)
-    previous_price = price_today * 1.1 if symbol == 'BTC' else price_today * 0.92
-    change_pct = ((price_today - previous_price) / previous_price) * 100
-
-    if abs(change_pct) > 10:
-        warnings.append(f"**{symbol}** is {change_pct:+.1f}% veranderd sinds gisteren.")
-
-if warnings:
-    for w in warnings:
-        st.error(w)
-else:
-    st.success("Geen abnormale koersbewegingen gemeld.")
+    if abs(delta_pct) > 10:
+        st.error(f"{symbol} is {delta_pct:+.1f}% veranderd t.o.v. gisteren!")
+    else:
+        st.success(f"{symbol}: geen abnormale beweging gedetecteerd.")
