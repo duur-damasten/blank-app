@@ -43,7 +43,10 @@ def simulate_portfolio(prices):
     today = datetime.today()
     months = (today.year - start_date.year) * 12 + today.month - start_date.month + 1
     dca_history = []
-    total_holdings = {k: initial_investments[k] / prices[coin] for coin, k in coins.items()}
+    total_holdings = {
+    k: initial_investments[k] / prices[coin]['eur']
+    for coin, k in coins.items()
+}
 
     for i in range(months):
         date = start_date + pd.DateOffset(months=i)
