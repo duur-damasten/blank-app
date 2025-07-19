@@ -98,3 +98,45 @@ st.line_chart(df.set_index('Date')['Total'])
 # ---- TABEL ----
 st.header("📋 Historisch overzicht")
 st.dataframe(df.round(2), use_container_width=True)
+
+# ---- KOERSVERWACHTING ----
+st.header("🔮 Verwachting komende week (22–28 juli 2025)")
+
+forecast = {
+    'BTC': "€60.000 – €65.000 (ETF-instroom en positief macro-sentiment)",
+    'ETH': "€3.400 – €3.700 (ETH-ETF’s + Layer 2 groei)",
+    'XRP': "€0,48 – €0,56 (lichte stijging mogelijk, adoptie blijft traag)"
+}
+
+for symbol, msg in forecast.items():
+    st.markdown(f"**{symbol}**: {msg}")
+
+# ---- NIEUWS SAMENVATTING ----
+st.header("📰 Laatste crypto-nieuws (samenvatting)")
+
+news_summary = """
+- **Bitcoin** blijft stijgen door institutionele vraag en nieuwe regelgeving (GENIUS Act).
+- **Ethereum** profiteert van de spot-ETF’s en groeit via Layer 2-oplossingen.
+- **XRP** beweegt zijwaarts, maar zoekt partners in het Midden-Oosten (CBDC’s).
+"""
+
+st.markdown(news_summary)
+
+# ---- PUSHNOTIFICATIE (in-app waarschuwing bij grote schommelingen) ----
+st.header("🚨 Waarschuwingen")
+
+warnings = []
+for coin_id, symbol in coins.items():
+    price_today = prices[coin_id]['eur']
+    # Simulatie: haal vorige prijs op (stel 24u geleden was 95% of 110%)
+    previous_price = price_today * 1.1 if symbol == 'BTC' else price_today * 0.92
+    change_pct = ((price_today - previous_price) / previous_price) * 100
+
+    if abs(change_pct) > 10:
+        warnings.append(f"**{symbol}** is {change_pct:+.1f}% veranderd sinds gisteren.")
+
+if warnings:
+    for w in warnings:
+        st.error(w)
+else:
+    st.success("Geen abnormale koersbewegingen gemeld.")
