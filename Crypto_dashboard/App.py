@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 # ---- CONFIG ----
 st.set_page_config(page_title="Crypto DCA Dashboard", layout="wide")
@@ -28,7 +29,7 @@ allocation = {
 
 start_date = datetime(2025, 7, 1)
 
-# ---- HELPER FUNCTIONS ----
+# ---- FUNCTIONS ----
 @st.cache_data(ttl=3600)
 def get_current_prices():
     url = "https://api.coingecko.com/api/v3/simple/price"
@@ -43,17 +44,27 @@ def simulate_portfolio(prices):
     today = datetime.today()
     months = (today.year - start_date.year) * 12 + today.month - start_date.month + 1
     dca_history = []
+
+    # Start met initiële holdings
     total_holdings = {
-    k: initial_investments[k] / prices[coin]['eur']
-    for coin, k in coins.items()
-}
+        v: initial_investments[v] / prices[k]['eur']
+        for k, v in coins.items()
+    }
 
     for i in range(months):
-        date = start_date + pd.DateOffset(months=i)
+        date = start_date + relativedelta(months=i)
         for symbol in total_holdings:
-            bought = (monthly_investment * allocation[symbol]) / prices[[k for k,v in coins.items() if v == symbol][0]]
+            # Zoek de bijbehorende coin-id in CoinGecko
+            coin_id = [k for k, v in coins.items() if v == symbol][0]
+            price = prices[coin_id]['eur']
+            bought = (monthly_investment * allocation[symbol]) / price
             total_holdings[symbol] += bought
-        value = {symbol: total_holdings[symbol] * prices[[k for k,v in coins.items() if v == symbol][0]] for symbol in total_holdings}
+
+        value = {
+            symbol: total_holdings[symbol] * prices[[k for k, v in coins.items() if v == symbol][0]]['eur']
+            for symbol in total_holdings
+        }
+
         dca_history.append({'Date': date, **value})
 
     return pd.DataFrame(dca_history), total_holdings
@@ -71,18 +82,19 @@ cols = st.columns(len(current_holdings) + 1)
 total_value = 0
 
 for i, symbol in enumerate(current_holdings):
-    price = prices[[k for k,v in coins.items() if v == symbol][0]]['eur']
+    coin_id = [k for k, v in coins.items() if v == symbol][0]
+    price = prices[coin_id]['eur']
     holding_value = current_holdings[symbol] * price
     total_value += holding_value
     cols[i].metric(symbol, f"€{holding_value:,.2f}", f"{current_holdings[symbol]:.4f} {symbol}")
 
-cols[-1].metric("📦 Totaal", f"€{total_value:,.2f}")
+cols[-1].metric("📦 Totale waarde", f"€{total_value:,.2f}")
 
-# ---- DCA GRAFIEK ----
-st.header("📅 Portefeuillegroei (DCA)")
+# ---- GRAFIEK ----
+st.header("📅 Waardeontwikkeling portefeuille")
 df['Total'] = df[[c for c in df.columns if c != 'Date']].sum(axis=1)
 st.line_chart(df.set_index('Date')['Total'])
 
 # ---- TABEL ----
-st.header("📋 Historische gegevens")
+st.header("📋 Historisch overzicht")
 st.dataframe(df.round(2), use_container_width=True)
