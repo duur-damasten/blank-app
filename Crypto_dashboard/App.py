@@ -106,3 +106,54 @@ for symbol in portfolio:
         st.error(f"{symbol} is {delta_pct:+.1f}% veranderd t.o.v. gisteren!")
     else:
         st.success(f"{symbol}: geen abnormale beweging gedetecteerd.")
+
+import streamlit as st
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+st.title("📈 ETH/BTC Ratio Analyse")
+
+@st.cache_data(ttl=3600)
+def fetch_eth_btc_ratio():
+    url = "https://api.coingecko.com/api/v3/coins/ethereum/market_chart"
+    params = {
+        "vs_currency": "btc",
+        "days": "30",  # afgelopen 30 dagen
+        "interval": "daily"
+    }
+    r = requests.get(url, params=params)
+    data = r.json()
+    prices = data['prices']  # lijst met [timestamp, prijs]
+    df = pd.DataFrame(prices, columns=["timestamp", "eth_btc"])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    return df
+
+df = fetch_eth_btc_ratio()
+
+# Line chart van ETH/BTC
+st.subheader("📊 ETH/BTC koersverhouding (30 dagen)")
+fig, ax = plt.subplots()
+df['eth_btc'].plot(ax=ax)
+ax.set_ylabel("ETH/BTC")
+ax.set_xlabel("Datum")
+st.pyplot(fig)
+
+# Prestatieanalyse
+start_ratio = df['eth_btc'].iloc[0]
+end_ratio = df['eth_btc'].iloc[-1]
+percentage_change = ((end_ratio - start_ratio) / start_ratio) * 100
+
+st.subheader("📌 Prestatieanalyse (laatste 30 dagen)")
+st.metric(label="ETH/BTC Verandering", value=f"{percentage_change:.2f} %", delta=f"{percentage_change:.2f}%")
+
+# Simpel switch-advies
+st.subheader("🔁 Switch-advies")
+if percentage_change > 1.0:
+    st.success("ETH presteert beter dan BTC. Overweeg (tijdelijk) een groter aandeel ETH.")
+elif percentage_change < -1.0:
+    st.warning("BTC presteert beter dan ETH. Overweeg (tijdelijk) meer BTC aan te houden.")
+else:
+    st.info("ETH en BTC presteren vergelijkbaar. Switch niet noodzakelijk.")
